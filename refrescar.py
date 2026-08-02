@@ -85,20 +85,53 @@ for r in records:
 items = sorted(cat.values(), key=lambda r: r["prod"])
 fecha_max = max((r["fecha"] for r in items), default=None)
 
+# marcar productos NUEVOS = los que NO estaban en el catalogo anterior.
+# Se compara con docs/catalogo.json de la corrida previa (persistente en el repo).
+# Cada producto guarda "alta" = fecha en que aparecio por primera vez en el catalogo
+# (no cambia una vez asignada). Lleva la etiqueta NUEVO mientras esa alta sea de hace
+# <= DIAS_NUEVO dias, para que el aviso dure hasta el cierre de inventario del mes.
+DIAS_NUEVO = 60
+prev = {}
+if os.path.exists(OUT):
+    try:
+        with open(OUT, encoding="utf-8") as f:
+            for p in json.load(f).get("productos", []):
+                prev[p["n"]] = p
+    except Exception:
+        prev = {}
+hoy = datetime.date.today()
+hoy_iso = hoy.isoformat()
+def alta_de(nombre):
+    p = prev.get(nombre)
+    if p is None:
+        return hoy_iso            # nunca visto antes -> alta = hoy (es NUEVO)
+    return p.get("alta")          # ya existia: conservar su alta (None si es pre-sistema)
+def es_nuevo(alta):
+    return alta is not None and (hoy - datetime.date.fromisoformat(alta)).days <= DIAS_NUEVO
+
 # salvaguarda ANTES de escribir: no sobrescribir con un catalogo vacio/roto
 # (p.ej. si Dropbox falla o cambia el formato del PDF)
 if len(items) < 50:
     shutil.rmtree(tmp, ignore_errors=True)
     sys.exit(f"ERROR: solo {len(items)} productos, algo va mal. No se sobrescribe el catalogo.")
 
+productos = []
+for r in items:
+    alta = alta_de(r["prod"])
+    it = {"n": r["prod"], "p": round(r["precio"], 2), "f": r["fecha"]}
+    if alta: it["alta"] = alta                 # persistir el alta para futuras corridas
+    if es_nuevo(alta): it["nuevo"] = True
+    productos.append(it)
+n_nuevos = sum(1 for it in productos if it.get("nuevo"))
+
 payload = {
     "actualizado": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
     "fecha_dato": fecha_max,
-    "productos": [{"n": r["prod"], "p": round(r["precio"], 2), "f": r["fecha"]} for r in items],
+    "productos": productos,
 }
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 with open(OUT, "w", encoding="utf-8") as f:
     json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
 shutil.rmtree(tmp, ignore_errors=True)
-print(f"OK · {len(records)} registros · {len(items)} productos · dato mas reciente {fecha_max}")
+print(f"OK · {len(records)} registros · {len(items)} productos · {n_nuevos} nuevos · dato mas reciente {fecha_max}")
 print("Escrito:", OUT)
