@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f4e78">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Inventario T12">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<title>Inventario Pescadería — Tienda 12</title>
+<style>
+:root{--azul:#1f4e78;--azul2:#2e75b6;--verde:#2e7d32;--amar:#c77700;--bg:#f4f6f9;--line:#e2e6ec;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:#1a2230;
+     padding-bottom:150px;padding-top:env(safe-area-inset-top);}
+header{position:sticky;top:0;z-index:20;background:var(--azul);color:#fff;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;box-shadow:0 2px 8px rgba(0,0,0,.15);}
+header h1{margin:0;font-size:17px;font-weight:700;}
+header .sub{font-size:11px;opacity:.85;margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+#refresh{background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;padding:4px 8px;font-size:11px;cursor:pointer;}
+.tools{display:flex;gap:8px;padding:10px 12px;position:sticky;top:60px;background:var(--bg);z-index:19;border-bottom:1px solid var(--line);flex-wrap:wrap;align-items:center;}
+#buscar{flex:1;min-width:150px;padding:12px 14px;border:2px solid var(--azul2);border-radius:12px;font-size:16px;outline:none;}
+.btn{border:1px solid var(--line);border-radius:12px;padding:11px 14px;font-size:14px;font-weight:600;cursor:pointer;background:#fff;color:var(--azul);}
+.btn.on{background:var(--azul2);color:#fff;border-color:var(--azul2);}
+.wrap{padding:8px 10px;}
+.msg{padding:16px;margin:10px;border-radius:12px;background:#fff;border:1px solid var(--line);font-size:14px;color:#4a5568;}
+.row{display:grid;grid-template-columns:1fr 90px 104px;gap:8px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-bottom:7px;}
+.pname{font-weight:600;font-size:15px;line-height:1.15;}
+.pmeta{font-size:11px;color:#8a94a3;margin-top:2px;}
+.pmeta .old{color:var(--amar);font-weight:600;}
+.price{font-weight:700;color:var(--azul);font-size:14px;text-align:right;white-space:nowrap;}
+.price small{display:block;font-weight:400;color:#8a94a3;font-size:10px;}
+.peso{width:100%;padding:12px 6px;border:2px solid #d6dbe3;border-radius:12px;font-size:18px;text-align:center;outline:none;}
+.peso:focus{border-color:var(--azul2);background:#fbfdff;}
+.peso.filled{border-color:var(--verde);background:#f2fbf3;font-weight:700;}
+.imp{grid-column:1/-1;display:none;justify-content:space-between;font-size:12px;color:#4a5568;border-top:1px dashed var(--line);margin-top:8px;padding-top:6px;}
+.row.has .imp{display:flex;}
+.imp b{color:#1a2230;}
+footer{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:2px solid var(--azul);box-shadow:0 -3px 12px rgba(0,0,0,.12);
+       padding:10px 14px calc(10px + env(safe-area-inset-bottom));z-index:30;}
+.totrow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;}
+.totrow .lab{font-size:12px;color:#6a7686;}
+.totrow .val{font-size:15px;font-weight:700;}
+.totrow.big .val{font-size:23px;color:var(--verde);}
+.fbtns{display:flex;gap:8px;margin-top:9px;}
+.fbtns .btn{flex:1;text-align:center;}
+.fbtns .pdf{background:var(--azul);color:#fff;border-color:var(--azul);}
+.fbtns .csv{background:#fff;}
+.fbtns .clr{flex:0 0 auto;color:#b23b3b;}
+/* ---- vista imprimible (PDF) ---- */
+#printable{display:none;}
+@media print{
+  body *{visibility:hidden;}
+  #printable,#printable *{visibility:visible;}
+  #printable{display:block;position:absolute;left:0;top:0;width:100%;padding:0 6mm;}
+  @page{margin:12mm;}
+}
+#printable h2{margin:0 0 2px;font-size:18px;}
+#printable .pmeta2{font-size:11px;color:#555;margin-bottom:10px;}
+#printable table{width:100%;border-collapse:collapse;font-size:11px;}
+#printable th,#printable td{border:1px solid #bbb;padding:4px 6px;text-align:right;}
+#printable th{background:#eee;}
+#printable td.l,#printable th.l{text-align:left;}
+#printable tr.tot td{font-weight:700;background:#eef5ff;font-size:12px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>🐟 Inventario Pescadería — Tienda 12</h1>
+  <div class="sub">
+    <span id="estado">Cargando precios…</span>
+    <button id="refresh">↻ Actualizar</button>
+  </div>
+</header>
+<div class="tools">
+  <input id="buscar" placeholder="🔍 Buscar producto…" autocomplete="off" inputmode="search">
+  <button class="btn" id="fpeso">Solo con peso</button>
+</div>
+<div class="wrap" id="lista"></div>
+
+<footer>
+  <div class="totrow"><span class="lab">Pesados / peso total</span><span class="val" id="tinfo">0 · 0,00 kg</span></div>
+  <div class="totrow"><span class="lab">TOTAL sin IVA</span><span class="val" id="tsin">0,00 €</span></div>
+  <div class="totrow big"><span class="lab">TOTAL con IVA (10%)</span><span class="val" id="tcon">0,00 €</span></div>
+  <div class="fbtns">
+    <button class="btn pdf" id="pdf">📄 PDF gestoría</button>
+    <button class="btn csv" id="csv">⬇︎ CSV</button>
+    <button class="btn clr" id="clr">🗑</button>
+  </div>
+</footer>
+
+<div id="printable"></div>
+
+<script>
+const KEY = "inv_pesca_t12";
+let DATA = [];               // [{n,p,f}]
+let FECHA_DATO = null;
+let pesos = JSON.parse(localStorage.getItem(KEY) || "{}");
+let soloConPeso = false;
+
+const eur = n => n.toLocaleString("es-ES",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";
+const kg  = n => n.toLocaleString("es-ES",{minimumFractionDigits:2,maximumFractionDigits:2})+" kg";
+const $ = s => document.querySelector(s);
+const lista = $("#lista");
+
+// meses de antiguedad de un precio (para avisar de precios rancios)
+function mesesDesde(fiso){
+  const d = new Date(fiso+"T00:00:00");
+  return Math.floor((Date.now()-d.getTime())/(1000*60*60*24*30.4));
+}
+
+async function cargar(){
+  $("#estado").textContent = "Cargando precios…";
+  try{
+    const res = await fetch("catalogo.json?t="+Date.now(), {cache:"no-store"});
+    if(!res.ok) throw new Error("http "+res.status);
+    const j = await res.json();
+    DATA = j.productos || [];
+    FECHA_DATO = j.fecha_dato;
+    $("#estado").textContent = "Precios al "+ (FECHA_DATO||"?") + " · "+DATA.length+" productos";
+    render();
+  }catch(e){
+    if(DATA.length){ render(); }        // ya teniamos datos cacheados
+    else lista.innerHTML = '<div class="msg">⚠️ No se pudieron cargar los precios. Conéctate a internet una vez y pulsa <b>↻ Actualizar</b>. Después funcionará también sin conexión.</div>';
+    $("#estado").textContent = "Sin conexión";
+  }
+}
+
+function render(){
+  const q = $("#buscar").value.trim().toLowerCase();
+  lista.innerHTML = "";
+  let mostrados = 0;
+  DATA.forEach(d=>{
+    const peso = pesos[d.n];
+    if(soloConPeso && !(peso>0)) return;
+    if(q && !d.n.toLowerCase().includes(q)) return;
+    mostrados++;
+    const meses = mesesDesde(d.f);
+    const viejo = meses>=6 ? `<span class="old">· precio de hace ${meses} meses</span>` : "";
+    const sin = (peso>0?peso*d.p:0), con = sin*1.1;
+    const row = document.createElement("div");
+    row.className = "row" + (peso>0?" has":"");
+    row.innerHTML = `
+      <div><div class="pname">${d.n}</div><div class="pmeta">${eur(d.p)}/kg · ${d.f} ${viejo}</div></div>
+      <div class="price">${eur(d.p)}<small>por kg</small></div>
+      <input class="peso ${peso>0?'filled':''}" inputmode="decimal" enterkeyhint="next" placeholder="kg" value="${peso!=null?String(peso).replace('.',','):''}" data-n="${encodeURIComponent(d.n)}">
+      <div class="imp"><span>SIN IVA: <b>${eur(sin)}</b></span><span>CON IVA: <b>${eur(con)}</b></span></div>`;
+    lista.appendChild(row);
+  });
+  if(DATA.length && mostrados===0) lista.innerHTML = '<div class="msg">Sin resultados para la búsqueda.</div>';
+  totales();
+}
+
+function totales(){
+  let n=0,pk=0,sin=0;
+  for(const d of DATA){const p=pesos[d.n]; if(p>0){n++;pk+=p;sin+=p*d.p;}}
+  $("#tinfo").textContent = n+" · "+kg(pk);
+  $("#tsin").textContent = eur(sin);
+  $("#tcon").textContent = eur(sin*1.1);
+}
+
+lista.addEventListener("input", e=>{
+  const t = e.target; if(!t.classList.contains("peso")) return;
+  const name = decodeURIComponent(t.dataset.n);
+  const v = parseFloat(t.value.replace(",","."));
+  if(t.value.trim()==="" || isNaN(v) || v<0){ delete pesos[name]; } else { pesos[name]=v; }
+  localStorage.setItem(KEY, JSON.stringify(pesos));
+  const row = t.closest(".row");
+  const ok = (pesos[name]>0);
+  row.classList.toggle("has", ok); t.classList.toggle("filled", ok);
+  const d = DATA.find(x=>x.n===name); const sin=(ok?pesos[name]*d.p:0);
+  const imp = row.querySelector(".imp");
+  if(imp) imp.innerHTML = `<span>SIN IVA: <b>${eur(sin)}</b></span><span>CON IVA: <b>${eur(sin*1.1)}</b></span>`;
+  totales();
+});
+
+$("#buscar").addEventListener("input", render);
+$("#refresh").addEventListener("click", cargar);
+$("#fpeso").addEventListener("click", e=>{ soloConPeso=!soloConPeso; e.target.classList.toggle("on",soloConPeso); render(); });
+$("#clr").addEventListener("click", ()=>{ if(confirm("¿Vaciar todos los pesos introducidos?")){ pesos={}; localStorage.setItem(KEY,"{}"); render(); }});
+
+// filas con peso, para exportar
+function pesados(){
+  const out=[];
+  for(const d of DATA){const p=pesos[d.n]; if(p>0){const s=p*d.p; out.push({n:d.n,p:d.p,f:d.f,peso:p,sin:s,con:s*1.1});}}
+  out.sort((a,b)=>a.n.localeCompare(b.n));
+  return out;
+}
+const hoyES = ()=> new Date().toLocaleDateString("es-ES",{day:"2-digit",month:"2-digit",year:"numeric"});
+
+// ---- PDF (via impresion del navegador -> Guardar/Compartir como PDF) ----
+$("#pdf").addEventListener("click", ()=>{
+  const rows = pesados();
+  if(!rows.length){ alert("Introduce algún peso antes de generar el PDF."); return; }
+  let tsin=0,tcon=0,tpk=0;
+  let tr = rows.map(r=>{ tsin+=r.sin; tcon+=r.con; tpk+=r.peso;
+    return `<tr><td class="l">${r.n}</td><td>${r.peso.toLocaleString("es-ES",{minimumFractionDigits:2,maximumFractionDigits:3})}</td><td>${eur(r.p)}</td><td>${eur(r.sin)}</td><td>${eur(r.con)}</td></tr>`;
+  }).join("");
+  $("#printable").innerHTML = `
+    <h2>Inventario de stock — Pescadería Tienda 12</h2>
+    <div class="pmeta2">Fecha inventario: ${hoyES()} · Precios: última compra registrada (dato más reciente ${FECHA_DATO||"?"}) · ${rows.length} productos</div>
+    <table>
+      <thead><tr><th class="l">Producto</th><th>Peso (kg)</th><th>€/kg s/IVA</th><th>Importe s/IVA</th><th>Importe c/IVA 10%</th></tr></thead>
+      <tbody>${tr}
+        <tr class="tot"><td class="l">TOTAL (${tpk.toLocaleString("es-ES",{minimumFractionDigits:2,maximumFractionDigits:2})} kg)</td><td></td><td></td><td>${eur(tsin)}</td><td>${eur(tcon)}</td></tr>
+      </tbody>
+    </table>`;
+  window.print();
+});
+
+// ---- CSV (compartir en movil o descargar) ----
+$("#csv").addEventListener("click", async ()=>{
+  const rows = pesados();
+  if(!rows.length){ alert("Introduce algún peso antes de exportar."); return; }
+  let out=[["Producto","Precio EUR/kg sin IVA","Fecha precio","Peso kg","Importe sin IVA","Importe con IVA 10%"]];
+  let tsin=0,tcon=0;
+  rows.forEach(r=>{ tsin+=r.sin; tcon+=r.con;
+    out.push([r.n, r.p.toFixed(2), r.f, String(r.peso).replace(".",","), r.sin.toFixed(2), r.con.toFixed(2)]);
+  });
+  out.push(["TOTAL","","","",tsin.toFixed(2),tcon.toFixed(2)]);
+  const csv = "﻿"+out.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(";")).join("\r\n");
+  const fname = "inventario_tienda12_"+new Date().toISOString().slice(0,10)+".csv";
+  const file = new File([csv], fname, {type:"text/csv"});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file], title:"Inventario Tienda 12"}); return; }catch(e){ if(e.name==="AbortError") return; }
+  }
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download=fname; a.click();
+});
+
+// service worker (offline / instalar en pantalla de inicio)
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(()=>{}); }
+
+cargar();
+</script>
+</body>
+</html>
