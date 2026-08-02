@@ -1,0 +1,14 @@
+{
+  "name": "Inventario Pescadería — Tienda 12",
+  "short_name": "Inventario T12",
+  "description": "Inventario mensual de stock con precios de última compra.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f6f9",
+  "theme_color": "#1f4e78",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
