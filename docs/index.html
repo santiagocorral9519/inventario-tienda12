@@ -31,11 +31,16 @@ header .sub{font-size:11px;opacity:.85;margin-top:3px;display:flex;align-items:c
 .pname{font-weight:600;font-size:15px;line-height:1.15;}
 .pmeta{font-size:11px;color:#8a94a3;margin-top:2px;}
 .pmeta .old{color:var(--amar);font-weight:600;}
+.new{display:inline-block;background:var(--verde);color:#fff;font-size:10px;font-weight:800;
+     padding:2px 7px;border-radius:20px;margin-left:6px;vertical-align:middle;letter-spacing:.3px;}
 .price{font-weight:700;color:var(--azul);font-size:14px;text-align:right;white-space:nowrap;}
 .price small{display:block;font-weight:400;color:#8a94a3;font-size:10px;}
-.peso{width:100%;padding:12px 6px;border:2px solid #d6dbe3;border-radius:12px;font-size:18px;text-align:center;outline:none;}
-.peso:focus{border-color:var(--azul2);background:#fbfdff;}
+/* casilla de peso: ya NO es input -> no abre el teclado del sistema */
+.peso{width:100%;min-height:46px;padding:10px 6px;border:2px solid #d6dbe3;border-radius:12px;font-size:18px;
+      text-align:center;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;background:#fff;}
+.peso .ph{color:#aab2bf;font-size:15px;}
 .peso.filled{border-color:var(--verde);background:#f2fbf3;font-weight:700;}
+.peso.sel{border-color:var(--azul2);background:#eef6ff;box-shadow:0 0 0 3px rgba(46,117,182,.18);}
 .imp{grid-column:1/-1;display:none;justify-content:space-between;font-size:12px;color:#4a5568;border-top:1px dashed var(--line);margin-top:8px;padding-top:6px;}
 .row.has .imp{display:flex;}
 .imp b{color:#1a2230;}
@@ -50,6 +55,26 @@ footer{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:2px sol
 .fbtns .pdf{background:var(--azul);color:#fff;border-color:var(--azul);}
 .fbtns .csv{background:#fff;}
 .fbtns .clr{flex:0 0 auto;color:#b23b3b;}
+/* ---- teclado numerico propio (no aparece el del sistema) ---- */
+.keypad{position:fixed;left:0;right:0;bottom:0;z-index:40;background:#fff;border-top:2px solid var(--azul);
+        box-shadow:0 -4px 16px rgba(0,0,0,.18);padding:8px 10px calc(8px + env(safe-area-inset-bottom));
+        transform:translateY(115%);transition:transform .18s ease;}
+.keypad.open{transform:translateY(0);}
+.kp-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:2px 4px 8px;}
+.kp-head .prod{font-weight:700;font-size:14px;color:var(--azul);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.kp-head .val{font-size:22px;font-weight:800;color:#1a2230;min-width:70px;text-align:right;}
+.kp-head .val small{font-size:12px;font-weight:600;color:#8a94a3;margin-left:3px;}
+.kp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.kp-grid button{font-size:22px;font-weight:700;padding:14px 0;border:1px solid var(--line);border-radius:12px;
+                background:#f7f9fc;color:#1a2230;cursor:pointer;}
+.kp-grid button:active{background:#e6eef8;}
+.kp-grid button.del{color:#b23b3b;}
+.kp-act{display:flex;gap:8px;margin-top:8px;}
+.kp-act button{flex:1;font-size:15px;font-weight:700;padding:13px 0;border-radius:12px;border:none;cursor:pointer;}
+.kp-act .next{background:#eef2f7;color:var(--azul);}
+.kp-act .done{background:var(--verde);color:#fff;}
+body.kp-on{padding-bottom:360px;}
+body.kp-on footer{display:none;}
 /* ---- vista imprimible (PDF) ---- */
 #printable{display:none;}
 @media print{
@@ -78,6 +103,7 @@ footer{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:2px sol
 <div class="tools">
   <input id="buscar" placeholder="🔍 Buscar producto…" autocomplete="off" inputmode="search">
   <button class="btn" id="fpeso">Solo con peso</button>
+  <button class="btn" id="fnuevo">🆕 Nuevos</button>
 </div>
 <div class="wrap" id="lista"></div>
 
@@ -92,15 +118,48 @@ footer{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:2px sol
   </div>
 </footer>
 
+<div id="keypad" class="keypad">
+  <div class="kp-head">
+    <span class="prod" id="kp-prod">—</span>
+    <span class="val"><span id="kp-val">0</span><small>kg</small></span>
+  </div>
+  <div class="kp-grid">
+    <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+    <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+    <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+    <button data-k=",">,</button><button data-k="0">0</button><button class="del" data-k="del">⌫</button>
+  </div>
+  <div class="kp-act">
+    <button class="next" id="kp-next">Siguiente ▾</button>
+    <button class="done" id="kp-done">Listo ✓</button>
+  </div>
+</div>
+
 <div id="printable"></div>
 
 <script>
 const KEY = "inv_pesca_t12";
+const MESKEY = "inv_pesca_mes";   // mes (YYYY-MM) al que pertenecen los pesos apuntados
 let DATA = [];               // [{n,p,f}]
 let FECHA_DATO = null;
 let pesos = JSON.parse(localStorage.getItem(KEY) || "{}");
 let soloConPeso = false;
+let soloNuevos = false;
 
+const mesActual = ()=> new Date().toISOString().slice(0,7);
+const nombreMes = ym => { const [y,m]=ym.split("-"); return new Date(y, m-1, 1).toLocaleDateString("es-ES",{month:"long",year:"numeric"}); };
+
+// avisa si hay pesos de un mes anterior (evita arrastrar el inventario del mes pasado)
+function chequearMes(){
+  const guardado = localStorage.getItem(MESKEY);
+  if(Object.keys(pesos).length && guardado && guardado!==mesActual()){
+    if(confirm(`Tienes pesos apuntados de ${nombreMes(guardado)}.\n¿Empezar un inventario nuevo y vaciarlos?`)){
+      pesos={}; localStorage.setItem(KEY,"{}"); localStorage.removeItem(MESKEY); render();
+    }
+  }
+}
+
+const r2  = n => Math.round(n*100)/100;   // a centimo: total = suma de filas mostradas
 const eur = n => n.toLocaleString("es-ES",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";
 const kg  = n => n.toLocaleString("es-ES",{minimumFractionDigits:2,maximumFractionDigits:2})+" kg";
 const $ = s => document.querySelector(s);
@@ -136,17 +195,19 @@ function render(){
   DATA.forEach(d=>{
     const peso = pesos[d.n];
     if(soloConPeso && !(peso>0)) return;
+    if(soloNuevos && !d.nuevo) return;
     if(q && !d.n.toLowerCase().includes(q)) return;
     mostrados++;
     const meses = mesesDesde(d.f);
     const viejo = meses>=6 ? `<span class="old">· precio de hace ${meses} meses</span>` : "";
-    const sin = (peso>0?peso*d.p:0), con = sin*1.1;
+    const nuevo = d.nuevo ? `<span class="new">🆕 NUEVO</span>` : "";
+    const sin = (peso>0?r2(peso*d.p):0), con = r2(sin*1.1);
     const row = document.createElement("div");
     row.className = "row" + (peso>0?" has":"");
     row.innerHTML = `
-      <div><div class="pname">${d.n}</div><div class="pmeta">${eur(d.p)}/kg · ${d.f} ${viejo}</div></div>
+      <div><div class="pname">${d.n}${nuevo}</div><div class="pmeta">${eur(d.p)}/kg · ${d.f} ${viejo}</div></div>
       <div class="price">${eur(d.p)}<small>por kg</small></div>
-      <input class="peso ${peso>0?'filled':''}" inputmode="decimal" enterkeyhint="next" placeholder="kg" value="${peso!=null?String(peso).replace('.',','):''}" data-n="${encodeURIComponent(d.n)}">
+      <div class="peso ${peso>0?'filled':''}" data-n="${encodeURIComponent(d.n)}">${peso!=null?String(peso).replace('.',','):'<span class="ph">kg</span>'}</div>
       <div class="imp"><span>SIN IVA: <b>${eur(sin)}</b></span><span>CON IVA: <b>${eur(con)}</b></span></div>`;
     lista.appendChild(row);
   });
@@ -155,37 +216,103 @@ function render(){
 }
 
 function totales(){
-  let n=0,pk=0,sin=0;
-  for(const d of DATA){const p=pesos[d.n]; if(p>0){n++;pk+=p;sin+=p*d.p;}}
+  let n=0,pk=0,sin=0,con=0;
+  for(const d of DATA){const p=pesos[d.n]; if(p>0){const s=r2(p*d.p); n++;pk+=p;sin+=s;con+=r2(s*1.1);}}
   $("#tinfo").textContent = n+" · "+kg(pk);
-  $("#tsin").textContent = eur(sin);
-  $("#tcon").textContent = eur(sin*1.1);
+  $("#tsin").textContent = eur(r2(sin));
+  $("#tcon").textContent = eur(r2(con));
 }
 
-lista.addEventListener("input", e=>{
-  const t = e.target; if(!t.classList.contains("peso")) return;
-  const name = decodeURIComponent(t.dataset.n);
-  const v = parseFloat(t.value.replace(",","."));
-  if(t.value.trim()==="" || isNaN(v) || v<0){ delete pesos[name]; } else { pesos[name]=v; }
-  localStorage.setItem(KEY, JSON.stringify(pesos));
-  const row = t.closest(".row");
-  const ok = (pesos[name]>0);
-  row.classList.toggle("has", ok); t.classList.toggle("filled", ok);
-  const d = DATA.find(x=>x.n===name); const sin=(ok?pesos[name]*d.p:0);
-  const imp = row.querySelector(".imp");
-  if(imp) imp.innerHTML = `<span>SIN IVA: <b>${eur(sin)}</b></span><span>CON IVA: <b>${eur(sin*1.1)}</b></span>`;
-  totales();
+// ---- teclado numerico propio ----
+let sel = null;   // celda seleccionada {name, el}
+let buf = "";     // string en edicion (formato es: "1,25")
+
+lista.addEventListener("click", e=>{
+  const cell = e.target.closest(".peso");
+  if(cell) abrirKeypad(decodeURIComponent(cell.dataset.n), cell);
 });
 
-$("#buscar").addEventListener("input", render);
+function abrirKeypad(name, el){
+  sel = {name, el};
+  buf = pesos[name]!=null ? String(pesos[name]).replace(".",",") : "";
+  document.querySelectorAll(".peso.sel").forEach(x=>x.classList.remove("sel"));
+  el.classList.add("sel");
+  $("#kp-prod").textContent = name;
+  $("#keypad").classList.add("open");
+  document.body.classList.add("kp-on");
+  pintarVal();
+  el.scrollIntoView({block:"center", behavior:"smooth"});
+}
+
+function cerrarKeypad(){
+  document.querySelectorAll(".peso.sel").forEach(x=>x.classList.remove("sel"));
+  $("#keypad").classList.remove("open");
+  document.body.classList.remove("kp-on");
+  sel = null;
+}
+
+function pintarVal(){ $("#kp-val").textContent = buf==="" ? "0" : buf; }
+
+function tecla(k){
+  if(!sel) return;
+  if(k==="del"){ buf = buf.slice(0,-1); }
+  else if(k===","){ if(!buf.includes(",")) buf = (buf==="" ? "0," : buf+","); }
+  else{ // digito
+    if(buf==="0") buf = k;                 // sustituye el cero inicial
+    else buf += k;
+    const dec = buf.split(",")[1];
+    if(dec && dec.length>3) buf = buf.slice(0,-1);   // max 3 decimales
+  }
+  aplicar();
+}
+
+function aplicar(){
+  const {name, el} = sel;
+  const v = parseFloat(buf.replace(",","."));
+  if(buf==="" || isNaN(v) || v<=0) delete pesos[name];
+  else pesos[name] = v;
+  localStorage.setItem(KEY, JSON.stringify(pesos));
+  if(Object.keys(pesos).length && !localStorage.getItem(MESKEY)) localStorage.setItem(MESKEY, mesActual());
+  const ok = pesos[name]>0;
+  el.innerHTML = buf==="" ? '<span class="ph">kg</span>' : buf;
+  el.classList.toggle("filled", ok);
+  const row = el.closest(".row"); row.classList.toggle("has", ok);
+  const d = DATA.find(x=>x.n===name); const s = ok ? r2(pesos[name]*d.p) : 0;
+  const imp = row.querySelector(".imp");
+  if(imp) imp.innerHTML = `<span>SIN IVA: <b>${eur(s)}</b></span><span>CON IVA: <b>${eur(r2(s*1.1))}</b></span>`;
+  pintarVal();
+  totales();
+}
+
+$("#keypad").addEventListener("click", e=>{
+  const b = e.target.closest("button[data-k]");
+  if(b) tecla(b.dataset.k);
+});
+$("#kp-done").addEventListener("click", cerrarKeypad);
+$("#kp-next").addEventListener("click", ()=>{
+  const cells = [...lista.querySelectorAll(".peso")];
+  const nxt = cells[cells.indexOf(sel.el)+1];
+  if(nxt) abrirKeypad(decodeURIComponent(nxt.dataset.n), nxt);
+  else cerrarKeypad();
+});
+
+let tBuscar;   // debounce: no reconstruir las 133 filas en cada tecla
+$("#buscar").addEventListener("input", ()=>{ cerrarKeypad(); clearTimeout(tBuscar); tBuscar=setTimeout(render,120); });
+$("#buscar").addEventListener("focus", cerrarKeypad);
 $("#refresh").addEventListener("click", cargar);
-$("#fpeso").addEventListener("click", e=>{ soloConPeso=!soloConPeso; e.target.classList.toggle("on",soloConPeso); render(); });
-$("#clr").addEventListener("click", ()=>{ if(confirm("¿Vaciar todos los pesos introducidos?")){ pesos={}; localStorage.setItem(KEY,"{}"); render(); }});
+$("#fpeso").addEventListener("click", e=>{ cerrarKeypad(); soloConPeso=!soloConPeso; e.target.classList.toggle("on",soloConPeso); render(); });
+$("#fnuevo").addEventListener("click", e=>{ cerrarKeypad(); soloNuevos=!soloNuevos; e.target.classList.toggle("on",soloNuevos); render(); });
+
+// cerrar el teclado al tocar fuera (no si se toca otra celda -> la reabre, ni el propio teclado)
+document.addEventListener("click", e=>{
+  if(sel && !e.target.closest("#keypad") && !e.target.closest(".peso")) cerrarKeypad();
+});
+$("#clr").addEventListener("click", ()=>{ if(confirm("¿Vaciar todos los pesos introducidos?")){ cerrarKeypad(); pesos={}; localStorage.setItem(KEY,"{}"); localStorage.removeItem(MESKEY); render(); }});
 
 // filas con peso, para exportar
 function pesados(){
   const out=[];
-  for(const d of DATA){const p=pesos[d.n]; if(p>0){const s=p*d.p; out.push({n:d.n,p:d.p,f:d.f,peso:p,sin:s,con:s*1.1});}}
+  for(const d of DATA){const p=pesos[d.n]; if(p>0){const s=r2(p*d.p); out.push({n:d.n,p:d.p,f:d.f,peso:p,sin:s,con:r2(s*1.1)});}}
   out.sort((a,b)=>a.n.localeCompare(b.n));
   return out;
 }
@@ -208,7 +335,11 @@ $("#pdf").addEventListener("click", ()=>{
         <tr class="tot"><td class="l">TOTAL (${tpk.toLocaleString("es-ES",{minimumFractionDigits:2,maximumFractionDigits:2})} kg)</td><td></td><td></td><td>${eur(tsin)}</td><td>${eur(tcon)}</td></tr>
       </tbody>
     </table>`;
+  // el nombre sugerido del PDF sale del title -> le metemos la fecha (dd-mm-aaaa)
+  const tituloPrev = document.title;
+  document.title = "Inventario Tienda 12 - " + hoyES().replace(/\//g,"-");
   window.print();
+  setTimeout(()=>{ document.title = tituloPrev; }, 1500);
 });
 
 // ---- CSV (compartir en movil o descargar) ----
@@ -233,7 +364,7 @@ $("#csv").addEventListener("click", async ()=>{
 // service worker (offline / instalar en pantalla de inicio)
 if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(()=>{}); }
 
-cargar();
+cargar().then(chequearMes);
 </script>
 </body>
 </html>
