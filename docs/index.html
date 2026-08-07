@@ -35,6 +35,7 @@ header .sub{font-size:11px;opacity:.85;margin-top:3px;display:flex;align-items:c
      padding:2px 7px;border-radius:20px;margin-left:6px;vertical-align:middle;letter-spacing:.3px;}
 .edit{cursor:pointer;font-size:13px;margin-left:5px;vertical-align:middle;}
 .pmeta .manual{color:var(--azul2);font-weight:600;}
+.pmeta .falta{color:var(--amar);font-weight:700;}
 /* ---- panel añadir/editar producto manual ---- */
 .addbox{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;display:flex;align-items:center;justify-content:center;padding:18px;}
 .addbox[hidden]{display:none;}
@@ -175,6 +176,15 @@ const MANKEY = "inv_pesca_manuales";   // productos añadidos a mano (no vienen 
 let DATA = [];               // catalogo PDFs + manuales, combinado [{n,p,f?,manual?}]
 let CAT = [];                // solo catalogo de los PDFs
 let manuales = JSON.parse(localStorage.getItem(MANKEY) || "[]");   // [{n,p}]
+
+// productos que se compran FUERA de los albaranes (no salen en ningun PDF): se siembran
+// una vez por dispositivo con precio 0 -> Hector pone el precio con el boton ✏️.
+const SEMILLA = ["HARINA 1 KG","HARINA 500 GR","LENGUADO DE MIGA","GAMBA ARROCERA","PEZ CONGELADO","CALDO CALDERO"];
+if(localStorage.getItem("inv_pesca_semilla") !== "1"){
+  SEMILLA.forEach(n=>{ if(!manuales.some(m=>m.n===n)) manuales.push({n, p:0}); });
+  localStorage.setItem(MANKEY, JSON.stringify(manuales));
+  localStorage.setItem("inv_pesca_semilla", "1");
+}
 let FECHA_DATO = null;
 let pesos = JSON.parse(localStorage.getItem(KEY) || "{}");
 let soloConPeso = false;
@@ -246,7 +256,8 @@ function render(){
     const viejo = meses>=6 ? `<span class="old">· precio de hace ${meses} meses</span>` : "";
     const nuevo = d.nuevo ? `<span class="new">🆕 NUEVO</span>` : "";
     const edit  = d.manual ? ` <span class="edit" data-m="${encodeURIComponent(d.n)}">✏️</span>` : "";
-    const meta  = d.manual ? `${eur(d.p)}/kg · <span class="manual">añadido a mano</span>`
+    const meta  = d.manual ? (d.p>0 ? `${eur(d.p)}/kg · <span class="manual">añadido a mano</span>`
+                                    : `<span class="falta">⚠️ toca ✏️ y pon el precio</span>`)
                            : `${eur(d.p)}/kg · ${d.f} ${viejo}`;
     const sin = (peso>0?r2(peso*d.p):0), con = r2(sin*1.1);
     const row = document.createElement("div");
