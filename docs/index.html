@@ -33,6 +33,22 @@ header .sub{font-size:11px;opacity:.85;margin-top:3px;display:flex;align-items:c
 .pmeta .old{color:var(--amar);font-weight:600;}
 .new{display:inline-block;background:var(--verde);color:#fff;font-size:10px;font-weight:800;
      padding:2px 7px;border-radius:20px;margin-left:6px;vertical-align:middle;letter-spacing:.3px;}
+.edit{cursor:pointer;font-size:13px;margin-left:5px;vertical-align:middle;}
+.pmeta .manual{color:var(--azul2);font-weight:600;}
+/* ---- panel añadir/editar producto manual ---- */
+.addbox{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;display:flex;align-items:center;justify-content:center;padding:18px;}
+.addbox[hidden]{display:none;}
+.addcard{background:#fff;border-radius:16px;padding:16px;width:100%;max-width:340px;box-shadow:0 12px 40px rgba(0,0,0,.3);}
+.addtitle{font-weight:700;font-size:16px;color:var(--azul);}
+.addhint{font-size:12px;color:#6a7686;margin:4px 0 12px;line-height:1.3;}
+.addcard input{width:100%;padding:12px 14px;border:2px solid #d6dbe3;border-radius:12px;font-size:16px;margin-bottom:10px;outline:none;}
+.addcard input:focus{border-color:var(--azul2);}
+.addbtns{display:flex;gap:8px;justify-content:flex-end;align-items:center;}
+.addbtns button{padding:11px 16px;border-radius:12px;border:none;font-size:14px;font-weight:700;cursor:pointer;}
+#add-ok{background:var(--verde);color:#fff;}
+#add-cancel{background:#eef2f7;color:var(--azul);}
+.addbtns .del2{background:#fff;color:#b23b3b;border:1px solid #f0c9c9;margin-right:auto;}
+.addbtns .del2[hidden]{display:none;}
 .price{font-weight:700;color:var(--azul);font-size:14px;text-align:right;white-space:nowrap;}
 .price small{display:block;font-weight:400;color:#8a94a3;font-size:10px;}
 /* casilla de peso: ya NO es input -> no abre el teclado del sistema */
@@ -104,6 +120,7 @@ body.kp-on footer{display:none;}
   <input id="buscar" placeholder="🔍 Buscar producto…" autocomplete="off" inputmode="search">
   <button class="btn" id="fpeso">Solo con peso</button>
   <button class="btn" id="fnuevo">🆕 Nuevos</button>
+  <button class="btn" id="fadd">➕ Añadir</button>
 </div>
 <div class="wrap" id="lista"></div>
 
@@ -117,6 +134,20 @@ body.kp-on footer{display:none;}
     <button class="btn clr" id="clr">🗑</button>
   </div>
 </footer>
+
+<div id="addbox" class="addbox" hidden>
+  <div class="addcard">
+    <div class="addtitle" id="add-title">Añadir producto</div>
+    <div class="addhint">Para artículos que no vienen en los albaranes (harina, caldo…). Precio en €/kg.</div>
+    <input id="add-nombre" placeholder="Nombre (ej. Harina 1 kg)" autocomplete="off">
+    <input id="add-precio" placeholder="Precio €/kg (ej. 1,20)" inputmode="decimal" autocomplete="off">
+    <div class="addbtns">
+      <button id="add-del" class="del2" hidden>Borrar</button>
+      <button id="add-cancel">Cancelar</button>
+      <button id="add-ok">Guardar</button>
+    </div>
+  </div>
+</div>
 
 <div id="keypad" class="keypad">
   <div class="kp-head">
@@ -140,11 +171,22 @@ body.kp-on footer{display:none;}
 <script>
 const KEY = "inv_pesca_t12";
 const MESKEY = "inv_pesca_mes";   // mes (YYYY-MM) al que pertenecen los pesos apuntados
-let DATA = [];               // [{n,p,f}]
+const MANKEY = "inv_pesca_manuales";   // productos añadidos a mano (no vienen en los PDFs)
+let DATA = [];               // catalogo PDFs + manuales, combinado [{n,p,f?,manual?}]
+let CAT = [];                // solo catalogo de los PDFs
+let manuales = JSON.parse(localStorage.getItem(MANKEY) || "[]");   // [{n,p}]
 let FECHA_DATO = null;
 let pesos = JSON.parse(localStorage.getItem(KEY) || "{}");
 let soloConPeso = false;
 let soloNuevos = false;
+
+// quita acentos/tildes para que la busqueda encuentre SALMON->SALMÓN, etc.
+const sinAcentos = s => s.normalize("NFD").replace(/[̀-ͯ]/g,"");
+// combina catalogo + manuales y ordena alfabeticamente
+function rebuildDATA(){
+  DATA = CAT.concat(manuales.map(m=>({n:m.n, p:m.p, manual:true})))
+            .sort((a,b)=>a.n.localeCompare(b.n,"es"));
+}
 
 const mesActual = ()=> new Date().toISOString().slice(0,7);
 const nombreMes = ym => { const [y,m]=ym.split("-"); return new Date(y, m-1, 1).toLocaleDateString("es-ES",{month:"long",year:"numeric"}); };
@@ -177,11 +219,13 @@ async function cargar(){
     const res = await fetch("catalogo.json?t="+Date.now(), {cache:"no-store"});
     if(!res.ok) throw new Error("http "+res.status);
     const j = await res.json();
-    DATA = j.productos || [];
+    CAT = j.productos || [];
     FECHA_DATO = j.fecha_dato;
+    rebuildDATA();
     $("#estado").textContent = "Precios al "+ (FECHA_DATO||"?") + " · "+DATA.length+" productos";
     render();
   }catch(e){
+    rebuildDATA();                      // al menos muestra los manuales
     if(DATA.length){ render(); }        // ya teniamos datos cacheados
     else lista.innerHTML = '<div class="msg">⚠️ No se pudieron cargar los precios. Conéctate a internet una vez y pulsa <b>↻ Actualizar</b>. Después funcionará también sin conexión.</div>';
     $("#estado").textContent = "Sin conexión";
@@ -189,23 +233,26 @@ async function cargar(){
 }
 
 function render(){
-  const q = $("#buscar").value.trim().toLowerCase();
+  const q = sinAcentos($("#buscar").value.trim().toLowerCase());
   lista.innerHTML = "";
   let mostrados = 0;
   DATA.forEach(d=>{
     const peso = pesos[d.n];
     if(soloConPeso && !(peso>0)) return;
     if(soloNuevos && !d.nuevo) return;
-    if(q && !d.n.toLowerCase().includes(q)) return;
+    if(q && !sinAcentos(d.n.toLowerCase()).includes(q)) return;
     mostrados++;
-    const meses = mesesDesde(d.f);
+    const meses = d.f ? mesesDesde(d.f) : 0;
     const viejo = meses>=6 ? `<span class="old">· precio de hace ${meses} meses</span>` : "";
     const nuevo = d.nuevo ? `<span class="new">🆕 NUEVO</span>` : "";
+    const edit  = d.manual ? ` <span class="edit" data-m="${encodeURIComponent(d.n)}">✏️</span>` : "";
+    const meta  = d.manual ? `${eur(d.p)}/kg · <span class="manual">añadido a mano</span>`
+                           : `${eur(d.p)}/kg · ${d.f} ${viejo}`;
     const sin = (peso>0?r2(peso*d.p):0), con = r2(sin*1.1);
     const row = document.createElement("div");
     row.className = "row" + (peso>0?" has":"");
     row.innerHTML = `
-      <div><div class="pname">${d.n}${nuevo}</div><div class="pmeta">${eur(d.p)}/kg · ${d.f} ${viejo}</div></div>
+      <div><div class="pname">${d.n}${nuevo}${edit}</div><div class="pmeta">${meta}</div></div>
       <div class="price">${eur(d.p)}<small>por kg</small></div>
       <div class="peso ${peso>0?'filled':''}" data-n="${encodeURIComponent(d.n)}">${peso!=null?String(peso).replace('.',','):'<span class="ph">kg</span>'}</div>
       <div class="imp"><span>SIN IVA: <b>${eur(sin)}</b></span><span>CON IVA: <b>${eur(con)}</b></span></div>`;
@@ -228,6 +275,8 @@ let sel = null;   // celda seleccionada {name, el}
 let buf = "";     // string en edicion (formato es: "1,25")
 
 lista.addEventListener("click", e=>{
+  const ed = e.target.closest(".edit");
+  if(ed){ abrirAdd(decodeURIComponent(ed.dataset.m)); return; }
   const cell = e.target.closest(".peso");
   if(cell) abrirKeypad(decodeURIComponent(cell.dataset.n), cell);
 });
@@ -303,6 +352,50 @@ $("#refresh").addEventListener("click", cargar);
 $("#fpeso").addEventListener("click", e=>{ cerrarKeypad(); soloConPeso=!soloConPeso; e.target.classList.toggle("on",soloConPeso); render(); });
 $("#fnuevo").addEventListener("click", e=>{ cerrarKeypad(); soloNuevos=!soloNuevos; e.target.classList.toggle("on",soloNuevos); render(); });
 
+// ---- productos manuales (articulos que no vienen en los PDFs) ----
+let editandoManual = null;
+function abrirAdd(nombre){
+  cerrarKeypad();
+  editandoManual = nombre || null;
+  const m = nombre ? manuales.find(x=>x.n===nombre) : null;
+  $("#add-title").textContent = nombre ? "Editar producto" : "Añadir producto";
+  $("#add-nombre").value = m ? m.n : "";
+  $("#add-precio").value = m ? String(m.p).replace(".",",") : "";
+  $("#add-del").hidden = !nombre;
+  $("#addbox").hidden = false;
+  $("#add-nombre").focus();
+}
+function cerrarAdd(){ $("#addbox").hidden = true; editandoManual = null; }
+function guardarManual(){
+  const nombre = $("#add-nombre").value.trim();
+  const precio = parseFloat($("#add-precio").value.replace(",","."));
+  if(!nombre){ alert("Pon un nombre."); return; }
+  if(!(precio>0)){ alert("Pon un precio válido (€/kg)."); return; }
+  const orig = editandoManual;
+  if(orig && orig!==nombre && pesos[orig]!=null){        // renombrado: conservar el peso
+    pesos[nombre]=pesos[orig]; delete pesos[orig]; localStorage.setItem(KEY, JSON.stringify(pesos));
+  }
+  const idx = manuales.findIndex(x=>x.n===(orig||nombre));
+  if(idx>=0) manuales[idx] = {n:nombre, p:precio};
+  else if(CAT.some(x=>x.n===nombre)){ alert("Ya existe ese producto en el catálogo."); return; }
+  else manuales.push({n:nombre, p:precio});
+  localStorage.setItem(MANKEY, JSON.stringify(manuales));
+  cerrarAdd(); rebuildDATA(); render();
+}
+function borrarManual(){
+  if(!editandoManual) return;
+  if(!confirm("¿Borrar «"+editandoManual+"»?")) return;
+  manuales = manuales.filter(x=>x.n!==editandoManual);
+  delete pesos[editandoManual]; localStorage.setItem(KEY, JSON.stringify(pesos));
+  localStorage.setItem(MANKEY, JSON.stringify(manuales));
+  cerrarAdd(); rebuildDATA(); render();
+}
+$("#fadd").addEventListener("click", ()=> abrirAdd(null));
+$("#add-ok").addEventListener("click", guardarManual);
+$("#add-cancel").addEventListener("click", cerrarAdd);
+$("#add-del").addEventListener("click", borrarManual);
+$("#addbox").addEventListener("click", e=>{ if(e.target.id==="addbox") cerrarAdd(); });
+
 // cerrar el teclado al tocar fuera (no si se toca otra celda -> la reabre, ni el propio teclado)
 document.addEventListener("click", e=>{
   if(sel && !e.target.closest("#keypad") && !e.target.closest(".peso")) cerrarKeypad();
@@ -349,7 +442,7 @@ $("#csv").addEventListener("click", async ()=>{
   let out=[["Producto","Precio EUR/kg sin IVA","Fecha precio","Peso kg","Importe sin IVA","Importe con IVA 10%"]];
   let tsin=0,tcon=0;
   rows.forEach(r=>{ tsin+=r.sin; tcon+=r.con;
-    out.push([r.n, r.p.toFixed(2), r.f, String(r.peso).replace(".",","), r.sin.toFixed(2), r.con.toFixed(2)]);
+    out.push([r.n, r.p.toFixed(2), r.f||"manual", String(r.peso).replace(".",","), r.sin.toFixed(2), r.con.toFixed(2)]);
   });
   out.push(["TOTAL","","","",tsin.toFixed(2),tcon.toFixed(2)]);
   const csv = "﻿"+out.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(";")).join("\r\n");
