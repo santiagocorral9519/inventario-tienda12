@@ -18,20 +18,6 @@ DATE_RE = re.compile(r"^(\d{2})/(\d{2})/(\d{4})$")
 # solo contienen etiquetas (APUNTAR, DESCONTAR, PAPEL, BANDEJAS), nunca pescado real.
 INTERNO_RE = re.compile(r"^TIENDA\s*\d+$", re.IGNORECASE)
 
-# --- reclasificacion de productos ambiguos -----------------------------------
-# El proveedor usa el MISMO nombre para productos distintos; los separamos por
-# precio (unica senal disponible). Editar los umbrales aqui si cambian los niveles.
-def reclasificar(prod, precio):
-    if prod == "CONGRIO":
-        return None if precio >= 15 else "CONGRIO"          # descartar el atipico (~21)
-    if prod == "MEJILLON":
-        if precio <= 0: return None                          # apunte de 0
-        return "MEJILLÓN GRANEL" if precio < 5.0 else "MEJILLÓN MEDIA CONCHA"
-    if prod == "MERLUZA":
-        return "PESCADILLA" if precio < 9.6 else "MERLUZA GORDA"
-    if prod == "ALISTADO":
-        return "ALISTADO PEQUEÑO" if precio < 38 else "ALISTADO GORDO"
-    return prod
 def num(s): return float(s.strip().replace(".", "").replace(",", "."))
 def is_num(s):
     try: num(s); return True
@@ -72,8 +58,7 @@ for path in files:
         d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
         try: fecha = datetime.date(y, mo, d).isoformat()
         except ValueError: continue
-        prod = reclasificar(producto.upper().strip(), num(precio))
-        if prod is None: continue                            # fila descartada
+        prod = producto.upper().strip()                      # nombre tal cual del albaran
         records.append({"prod": prod, "precio": num(precio), "fecha": fecha})
 
 # ultimo precio por producto (fecha mas reciente; empate -> ultimo leido, orden determinista)
